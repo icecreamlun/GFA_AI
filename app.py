@@ -10,27 +10,27 @@ from react_agent import ReActAgent
 from feedback_manager import Feedback, FeedbackManager
 from datetime import datetime
 
-# 加载环境变量
+# Load environment variables
 load_dotenv()
 
-# 创建自定义的 httpx 客户端
+# Create custom httpx client
 http_client = httpx.Client()
 
-# 初始化 OpenAI 客户端
+# Initialize OpenAI client
 client = OpenAI(http_client=http_client)
 
 app = FastAPI()
 
-# 添加CORS中间件
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 允许所有来源
+    allow_origins=["*"],  # Allow all origins
     allow_credentials=True,
-    allow_methods=["*"],  # 允许所有方法
-    allow_headers=["*"],  # 允许所有头部
+    allow_methods=["*"],  # Allow all methods
+    allow_headers=["*"],  # Allow all headers
 )
 
-# 初始化向量数据库和ReAct代理
+# Initialize vector database and ReAct agent
 vectordb = VectorDB()
 react_agent = ReActAgent(vectordb, client)
 feedback_manager = FeedbackManager()
@@ -47,7 +47,7 @@ class FeedbackRequest(BaseModel):
 @app.post("/chat")
 def chat(req: QueryRequest):
     try:
-        # 使用ReAct代理处理查询
+        # Process query using ReAct agent
         result = react_agent.run(req.query)
         return result
     except Exception as e:

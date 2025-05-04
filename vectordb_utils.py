@@ -2,89 +2,84 @@ import faiss
 import pickle
 import numpy as np
 from sentence_transformers import SentenceTransformer
-from feedback_manager import FeedbackManager
 from typing import List, Dict, Any
+import os
+from feedback_manager import FeedbackManager
 
 class VectorDB:
-    def __init__(self, db_dir="vectordb"):
+    def __init__(self, db_dir: str = "vectordb"):
+        self.db_dir = db_dir
         self.model = SentenceTransformer('all-MiniLM-L6-v2')
         self.feedback_manager = FeedbackManager()
-        try:
-            self.index = faiss.read_index(f"{db_dir}/index.faiss")
-            with open(f"{db_dir}/metadata.pkl", "rb") as f:
-                meta = pickle.load(f)
-            self.texts = meta["texts"]
-            self.contractors = meta["contractors"]
-            self.urls = meta.get("urls", [])
-        except Exception as e:
-            print(f"Error loading vector database: {e}")
-            raise
-
-    def _calculate_relevance_score(self, doc_id: str, similarity_score: float) -> float:
-        """计算综合相关性分数，结合语义相似度和用户反馈"""
-        feedback_score = self.feedback_manager.get_doc_score(doc_id)
         
-        # 计算反馈分数（使用威尔逊区间下限）
-        total_feedback = feedback_score["helpful_count"] + feedback_score["unhelpful_count"]
-        if total_feedback > 0:
-            p = feedback_score["helpful_count"] / total_feedback
-            z = 1.96  # 95% 置信区间
-            n = total_feedback
+        # Load vector index
+        self.index = faiss.read_index(os.path.join(db_dir, "index.faiss"))
+        
+        # Load metadata
+        with open(os.path.join(db_dir, "metadata.pkl"), "rb") as f:
+            self.metadata = pickle.load(f)
+            self.texts = self.metadata["texts"]
+            self.contractors = self.metadata["contractors"]
+            self.urls = self.metadata["urls"]
+
+    def _calculate_relevance_score(self, similarity_score: float, doc_id: str) -> float:
+        """Calculate the relevance score combining semantic similarity and feedback"""
+        # Calculate feedback score (using Wilson score interval lower bound)
+        doc_score = self.feedback_manager.get_doc_score(doc_id)
+        n = doc_score.helpful_count + doc_score.unhelpful_count
+        
+        if n > 0:
+            p = doc_score.helpful_count / n
+            z = 1.96  # 95% confidence interval
             feedback_score = (p + z*z/(2*n) - z*np.sqrt((p*(1-p)+z*z/(4*n))/n))/(1+z*z/n)
         else:
-            feedback_score = 0.5  # 默认分数
-            
-        # 结合语义相似度和反馈分数
-        # 使用加权平均，可以根据需要调整权重
+            feedback_score = 0.5  # Default score
+        
+        # Combine semantic similarity and feedback score
+        # Using weighted average, weights can be adjusted as needed
         semantic_weight = 0.7
         feedback_weight = 0.3
         
-        return semantic_weight * similarity_score + feedback_weight * feedback_score
+        return similarity_score * semantic_weight + feedback_score * feedback_weight
 
     def search(self, query: str, top_k: int = 3) -> List[Dict[str, Any]]:
-        """搜索并返回排序后的结果"""
-        # 获取语义相似度分数
-        query_vec = self.model.encode([query]).astype("float32")
-        D, I = self.index.search(query_vec, top_k * 2)  # 获取更多结果用于重排序
+        """Search for relevant contractors based on the query"""
+        # Get semantic similarity scores
+        query_vec = self.model.encode([query])[0]
+        D, I = self.index.search(query_vec.reshape(1, -1), top_k * 2)  # Get more results for re-ranking
         
-        # 计算综合分数并排序
+        # Calculate combined scores and sort
         results = []
-        for idx, similarity_score in zip(I[0], D[0]):
-            contractor = self.contractors[idx]
-            contractor["url"] = self.urls[idx] if self.urls else ""
-            contractor["doc_id"] = str(idx)  # 添加文档ID用于反馈
+        for i, (score, idx) in enumerate(zip(D[0], I[0])):
+            contractor = self.contractors[idx].copy()
+            contractor["doc_id"] = str(idx)  # Add document ID for feedback
             
-            # 计算综合分数
-            relevance_score = self._calculate_relevance_score(
-                contractor["doc_id"],
-                float(similarity_score)
-            )
+            # Calculate combined score
+            relevance_score = self._calculate_relevance_score(1 - score, str(idx))
             
-            # 根据查询类型调整分数
-            if "years" in query.lower() and "experience" in query.lower():
-                # 如果有经验年限信息，将其纳入评分
-                if 'years_in_business' in contractor:
-                    try:
-                        years = int(contractor['years_in_business'])
-                        # 经验年限越长，分数越高
-                        relevance_score *= (1 + years / 100)  # 将经验年限作为加分项
-                    except (ValueError, TypeError):
-                        pass
+            # Adjust score based on query type
+            if "years" in query.lower() or "experience" in query.lower():
+                # If years of experience information is available, include it in scoring
+                if "years_in_business" in contractor:
+                    years = float(contractor["years_in_business"])
+                    # The longer the experience, the higher the score
+                    relevance_score *= (1 + years / 100)  # Add experience years as a bonus
             
             if "new york" in query.lower():
-                # 检查地址是否在纽约
-                if 'address' in contractor and 'new york' in contractor['address'].lower():
-                    relevance_score *= 1.5  # 纽约的承包商获得更高的分数
+                # Check if address is in New York
+                if "new york" in contractor.get("address", "").lower():
+                    relevance_score *= 1.5  # New York contractors get higher scores
                 else:
-                    relevance_score *= 0.5  # 非纽约的承包商分数降低
+                    relevance_score *= 0.5  # Non-New York contractors get lower scores
             
-            contractor["relevance_score"] = relevance_score
-            contractor["similarity_score"] = float(similarity_score)
-            
-            results.append(contractor)
+            results.append({
+                **contractor,
+                "similarity_score": 1 - score,
+                "relevance_score": relevance_score
+            })
         
-        # 按综合分数排序
+        # Sort by combined score
         results.sort(key=lambda x: x["relevance_score"], reverse=True)
         
-        # 返回前top_k个结果
+        # Return top k results
         return results[:top_k] 

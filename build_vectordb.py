@@ -10,11 +10,8 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 from typing import List, Dict
 import pickle
-from scrape_gaf_multiple import fetch_html, extract_data, URLS
+from scrape_gaf_multiple import fetch_html, extract_data, URLS, scrape_contractors
 import os
-
-# 加载预训练模型
-model = SentenceTransformer('all-MiniLM-L6-v2')
 
 def create_contractor_text(contractor: Dict, url: str) -> str:
     """将承包商信息转换为文本"""
@@ -42,32 +39,42 @@ def create_contractor_text(contractor: Dict, url: str) -> str:
     
     return " | ".join(text_parts)
 
-def build_vectordb(contractors: List[Dict], urls: List[str], output_dir: str = "vectordb"):
-    """构建向量数据库"""
-    # 创建输出目录
-    os.makedirs(output_dir, exist_ok=True)
+def build_vector_db():
+    """Build and save the vector database"""
+    # Load pre-trained model
+    model = SentenceTransformer('all-MiniLM-L6-v2')
     
-    # 准备文本数据
-    texts = [create_contractor_text(contractor, url) for contractor, url in zip(contractors, urls)]
+    # Get contractor data
+    contractors = scrape_contractors()
     
-    # 生成向量
+    # Create output directory
+    os.makedirs("vectordb", exist_ok=True)
+    
+    # Prepare text data
+    texts = []
+    for contractor in contractors:
+        text = f"{contractor.get('name', '')} {contractor.get('about_us', '')} {contractor.get('address', '')}"
+        texts.append(text)
+    
+    # Generate vectors
     embeddings = model.encode(texts)
+    embeddings = np.array(embeddings).astype('float32')
     
-    # 创建 FAISS 索引
+    # Create FAISS index
     dimension = embeddings.shape[1]
     index = faiss.IndexFlatL2(dimension)
-    index.add(embeddings.astype('float32'))
+    index.add(embeddings)
     
-    # 保存索引和元数据
-    faiss.write_index(index, f"{output_dir}/index.faiss")
+    # Save index and metadata
+    faiss.write_index(index, "vectordb/index.faiss")
     
-    # 保存元数据
+    # Save metadata
     metadata = {
-        'texts': texts,
-        'contractors': contractors,
-        'urls': urls
+        "texts": texts,
+        "contractors": contractors,
+        "urls": [c.get("url", "") for c in contractors]
     }
-    with open(f"{output_dir}/metadata.pkl", 'wb') as f:
+    with open("vectordb/metadata.pkl", "wb") as f:
         pickle.dump(metadata, f)
 
 def get_contractors() -> tuple[List[Dict], List[str]]:
@@ -83,12 +90,12 @@ def get_contractors() -> tuple[List[Dict], List[str]]:
     return contractors, urls
 
 def main():
-    # 获取承包商数据
-    contractors, urls = get_contractors()
+    # Get contractor data
+    contractors = scrape_contractors()
     
-    # 构建向量数据库
-    build_vectordb(contractors, urls)
-    print("[i] 向量数据库构建完成")
+    # Build vector database
+    build_vector_db()
+    print("[i] Vector database built and saved")
 
 if __name__ == "__main__":
     main() 

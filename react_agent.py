@@ -38,35 +38,19 @@ class ReActAgent:
         self.vectordb = vectordb
         self.client = openai_client
         
-    def observe(self, query: str) -> Observation:
-        """观察阶段：获取当前状态和环境信息"""
-        docs = self.vectordb.search(query, top_k=3)
-        context = "\n\n".join([
-            f"Name: {d.get('name')}\nAbout: {d.get('about_us','')}\nAddress: {d.get('address')}\nPhone: {d.get('phone')}\nURL: {d.get('url')}\n"
-            for d in docs
-        ])
-        return Observation(
-            query=query,
-            context=context,
-            docs=docs,
-            current_time=datetime.now().isoformat()
-        )
-    
     def _generate_suggestions(self, docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """生成具体的行动建议"""
+        """Generate actionable suggestions for each contractor"""
         suggestions = []
-        current_time = datetime.now()
         
-        # 为每个承包商生成建议
         for doc in docs:
-            # 随机生成一些动态数据（在实际应用中，这些数据应该来自真实的分析）
-            activity_score = random.uniform(0.5, 1.0)  # 模拟活跃度分数
-            last_contact_days = random.randint(0, 30)  # 模拟上次联系天数
+            # Generate some dynamic data (in a real application, this would come from actual analysis)
+            activity_score = random.uniform(0.5, 1.0)  # Simulate activity score
+            last_contact_days = random.randint(0, 30)  # Simulate days since last contact
             
-            # 根据数据生成建议
+            # Generate suggestions based on the data
             if activity_score > 0.8:
-                # 高活跃度承包商
-                next_contact = current_time + timedelta(days=random.randint(1, 3))
+                # High activity contractors
+                next_contact = datetime.now() + timedelta(days=random.randint(1, 3))
                 suggestion = {
                     "type": "high_activity",
                     "contractor": doc["name"],
@@ -82,8 +66,8 @@ class ReActAgent:
                     }
                 }
             elif last_contact_days > 14:
-                # 长时间未联系的承包商
-                next_contact = current_time + timedelta(days=random.randint(1, 7))
+                # Contractors not contacted for a long time
+                next_contact = datetime.now() + timedelta(days=random.randint(1, 7))
                 suggestion = {
                     "type": "follow_up",
                     "contractor": doc["name"],
@@ -98,8 +82,8 @@ class ReActAgent:
                     }
                 }
             else:
-                # 常规跟进
-                next_contact = current_time + timedelta(days=random.randint(7, 14))
+                # Regular follow-up
+                next_contact = datetime.now() + timedelta(days=random.randint(7, 14))
                 suggestion = {
                     "type": "regular_follow_up",
                     "contractor": doc["name"],
@@ -118,39 +102,50 @@ class ReActAgent:
         
         return suggestions
     
-    def think(self, observation: Observation) -> Thought:
-        """思考阶段：分析当前情况并决定下一步行动"""
-        # 生成具体建议
-        suggestions = self._generate_suggestions(observation.docs)
-        
-        # 构建分析提示
-        prompt = (
-            "You are a B2B sales assistant for a roofing distributor. "
-            "Given the following contractor information and sales suggestions, analyze the situation and provide insights. "
-            "Contractor info:\n"
-            f"{observation.context}\n"
-            f"Sales team question: {observation.query}\n"
-            "Current suggestions:\n"
-            f"{suggestions}\n"
-            "Your analysis (in English, concise, and actionable):"
+    def observe(self, query: str) -> Observation:
+        """Observe the current state based on the query"""
+        docs = self.vectordb.search(query, top_k=3)
+        context = "\n\n".join([
+            f"Name: {d.get('name')}\nAbout: {d.get('about_us','')}\nAddress: {d.get('address')}\nPhone: {d.get('phone')}\nURL: {d.get('url')}\n"
+            for d in docs
+        ])
+        return Observation(
+            query=query,
+            context=context,
+            docs=docs,
+            current_time=datetime.now().isoformat()
         )
+    
+    def think(self, observation: Observation) -> Thought:
+        """Analyze the observation and generate insights"""
+        prompt = f"""
+        Analyze the following contractor search results and provide insights:
+        
+        Query: {observation.query}
+        Context: {observation.context}
+        Current Time: {observation.current_time}
+        
+        Contractors:
+        {[doc['name'] for doc in observation.docs]}
+        
+        Please provide:
+        1. Key observations about the contractors
+        2. Potential opportunities or concerns
+        3. Recommended next steps
+        """
         
         response = self.client.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=256,
-            temperature=0.7,
+            messages=[{"role": "user", "content": prompt}]
         )
         
         reasoning = response.choices[0].message.content
-        return Thought(
-            reasoning=reasoning,
-            next_action="generate_response",
-            suggestions=suggestions
-        )
+        suggestions = self._generate_suggestions(observation.docs)
+        
+        return Thought(reasoning=reasoning, next_action="generate_response", suggestions=suggestions)
     
     def act(self, thought: Thought, observation: Observation) -> Result:
-        """行动阶段：执行具体的操作"""
+        """Execute actions based on the analysis"""
         if thought.next_action == "generate_response":
             prompt = (
                 "Based on your previous analysis, generate a final response to the sales team. "
@@ -180,17 +175,17 @@ class ReActAgent:
             return Result(success=False, output="", error="Unknown action type")
     
     def run(self, query: str) -> Dict[str, Any]:
-        """运行完整的ReAct流程"""
-        # 1. 观察
+        """Run the complete ReAct process"""
+        # 1. Observe
         observation = self.observe(query)
         
-        # 2. 思考
+        # 2. Think
         thought = self.think(observation)
         
-        # 3. 行动
+        # 3. Act
         result = self.act(thought, observation)
         
-        # 4. 返回结果
+        # 4. Return result
         return {
             "answer": result.output if result.success else "Error: " + result.error,
             "reasoning": thought.reasoning,

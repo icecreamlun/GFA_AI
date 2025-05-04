@@ -4,9 +4,11 @@
 抓取多个 GAF 承包商详情页 —— 含 About Us
 """
 
-import json, re, cloudscraper
+import json, re, cloudscraper, requests
 from bs4 import BeautifulSoup
-from typing import List, Dict
+from typing import List, Dict, Any
+import time
+import random
 
 URLS = [
     "https://www.gaf.com/en-us/roofing-contractors/residential/usa/nj/matawan/us-roofing-siding-inc-1141909",
@@ -102,6 +104,68 @@ def extract_data(html: str) -> Dict:
             data[key] = node.find_next("p").get_text(strip=True)
 
     return data
+
+
+def scrape_contractors() -> List[Dict[str, Any]]:
+    """Scrape contractor data from GAF website"""
+    contractors = []
+    
+    # List of contractor URLs to scrape
+    urls = [
+        "https://www.gaf.com/en-us/contractor-locator/contractor/12345",
+        "https://www.gaf.com/en-us/contractor-locator/contractor/67890",
+        # Add more URLs as needed
+    ]
+    
+    for url in urls:
+        try:
+            # Add random delay to avoid being blocked
+            time.sleep(random.uniform(1, 3))
+            
+            # Send request
+            response = requests.get(url)
+            response.raise_for_status()
+            
+            # Parse HTML
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Extract contractor information
+            contractor = {}
+            
+            # -------- Ratings & Reviews --------
+            rating_elem = soup.find('div', class_='rating')
+            if rating_elem:
+                contractor['rating'] = rating_elem.text.strip()
+            
+            # -------- Address & Phone --------
+            contact_elem = soup.find('div', class_='contact-info')
+            if contact_elem:
+                contractor['address'] = contact_elem.find('p', class_='address').text.strip()
+                contractor['phone'] = contact_elem.find('p', class_='phone').text.strip()
+            
+            # -------- Certifications --------
+            certs_elem = soup.find('div', class_='certifications')
+            if certs_elem:
+                contractor['certifications'] = [cert.text.strip() for cert in certs_elem.find_all('li')]
+            
+            # -------- Details Table --------
+            details_table = soup.find('table', class_='contractor-details')
+            if details_table:
+                for row in details_table.find_all('tr'):
+                    key = row.find('th').text.strip().lower().replace(' ', '_')
+                    value = row.find('td').text.strip()
+                    contractor[key] = value
+            
+            # Add URL
+            contractor['url'] = url
+            
+            contractors.append(contractor)
+            
+        except Exception as e:
+            print(f"Error scraping {url}: {str(e)}")
+            continue
+    
+    return contractors
 
 
 def main():

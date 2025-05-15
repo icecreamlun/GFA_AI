@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from react_agent import ReActAgent
 from feedback_manager import Feedback, FeedbackManager
 from datetime import datetime
+import uuid
 
 # Load environment variables
 load_dotenv()
@@ -37,18 +38,24 @@ feedback_manager = FeedbackManager()
 
 class QueryRequest(BaseModel):
     query: str
+    session_id: str = None
 
 class FeedbackRequest(BaseModel):
     query: str
     doc_id: str
     is_helpful: bool
+    session_id: str
     metadata: dict = {}
 
 @app.post("/chat")
 def chat(req: QueryRequest):
     try:
-        # Process query using ReAct agent
-        result = react_agent.run(req.query)
+        # 如果没有提供 session_id，生成一个新的
+        if not req.session_id:
+            req.session_id = str(uuid.uuid4())
+            
+        # Process query using ReAct agent with MCP support
+        result = react_agent.run(req.query, req.session_id)
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -61,7 +68,10 @@ def submit_feedback(req: FeedbackRequest):
             doc_id=req.doc_id,
             is_helpful=req.is_helpful,
             timestamp=datetime.now().isoformat(),
-            metadata=req.metadata
+            metadata={
+                **req.metadata,
+                "session_id": req.session_id
+            }
         )
         feedback_manager.add_feedback(feedback)
         return {"status": "success", "message": "Feedback recorded"}
@@ -78,4 +88,4 @@ def get_feedback_stats():
 
 @app.get("/")
 def read_root():
-    return {"message": "Welcome to the B2B Sales Intelligence API with ReAct Architecture and Feedback System"} 
+    return {"message": "Welcome to the B2B Sales Intelligence API with ReAct Architecture, MCP Protocol, and Feedback System"} 

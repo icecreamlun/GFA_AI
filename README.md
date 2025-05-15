@@ -11,6 +11,7 @@ This platform helps sales teams identify, understand, and effectively engage wit
 - Generating actionable sales recommendations
 - Learning from user feedback to improve results
 - Automating data updates and maintenance
+- Implementing Model Context Protocol (MCP) for enhanced context management
 
 ## System Architecture
 
@@ -37,6 +38,12 @@ graph TD
     O --> P["Ranking Updates"]
     P --> J
 
+    Q["MCP Protocol"] --> I
+    I --> Q
+    Q --> R["Context Management"]
+    R --> S["Session History"]
+    S --> Q
+
 %% System components
 style A fill:#f9f,stroke:#333
 style B fill:#bbf,stroke:#333
@@ -44,6 +51,9 @@ style E fill:#bfb,stroke:#333
 style H fill:#fbb,stroke:#333
 style I fill:#ffb,stroke:#333
 style O fill:#bfb,stroke:#333
+style Q fill:#fbf,stroke:#333
+style R fill:#fbf,stroke:#333
+style S fill:#fbf,stroke:#333
 ```
 
 ## Key Components
@@ -81,6 +91,22 @@ style O fill:#bfb,stroke:#333
 - Built with FastAPI
 - Handles queries and feedback submission
 - Manages CORS and error handling
+
+### 7. Model Context Protocol (MCP)
+- **Core File:** `mcp_protocol.py`
+- Implements context management for AI interactions
+- Features:
+  - Session-based context tracking
+  - Query history management
+  - Context persistence and retrieval
+  - Message history tracking
+  - Metadata management
+- Benefits:
+  - Enhanced conversation continuity
+  - Improved context awareness
+  - Better response quality
+  - Session state management
+  - Debugging and monitoring capabilities
 
 ## Installation
 
@@ -145,6 +171,27 @@ uvicorn app:app --reload
 }
 ```
 
+### MCP Protocol Usage
+
+The MCP protocol is automatically integrated into the chat system. To use it effectively:
+
+1. Initial Query:
+```json
+{
+    "query": "Find roofing contractors in New York"
+}
+```
+
+2. Follow-up Query (using session_id):
+```json
+{
+    "query": "Tell me more about the first contractor",
+    "session_id": "previous_session_id"
+}
+```
+
+The system will maintain context between queries, providing more coherent and contextually aware responses.
+
 ## Test Cases
 
 1. General Contractor Search
@@ -154,6 +201,9 @@ uvicorn app:app --reload
 5. Regular Follow-Up
 6. Feedback Submission
 7. Feedback Statistics
+8. MCP Context Management
+9. Session Continuity
+10. Context Persistence
 
 ## Future Improvements
 
@@ -171,4 +221,10 @@ uvicorn app:app --reload
    - Apache Hive integration
    - Real-time business insights
    - Advanced analytics support
+
+4. **MCP Enhancements**
+   - Persistent storage for contexts
+   - Advanced context compression
+   - Context-aware routing
+   - Multi-session management
 

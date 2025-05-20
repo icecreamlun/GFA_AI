@@ -10,6 +10,7 @@ from react_agent import ReActAgent
 from feedback_manager import Feedback, FeedbackManager
 from datetime import datetime
 import uuid
+from mcp_server import MCPServer
 
 # Load environment variables
 load_dotenv()
@@ -35,10 +36,12 @@ app.add_middleware(
 vectordb = VectorDB()
 react_agent = ReActAgent(vectordb, client)
 feedback_manager = FeedbackManager()
+mcp_server = MCPServer()
 
 class QueryRequest(BaseModel):
     query: str
     session_id: str = None
+    web_search: bool = False
 
 class FeedbackRequest(BaseModel):
     query: str
@@ -48,20 +51,36 @@ class FeedbackRequest(BaseModel):
     metadata: dict = {}
 
 @app.post("/chat")
-def chat(req: QueryRequest):
+async def chat(req: QueryRequest):
     try:
-        # 如果没有提供 session_id，生成一个新的
+        # if not session_id, generate a new one
         if not req.session_id:
             req.session_id = str(uuid.uuid4())
             
+        # Initialize MCP session if needed
+        if not mcp_server.mcp.get_context(req.session_id):
+            await mcp_server.initialize_session(req.session_id)
+            
         # Process query using ReAct agent with MCP support
         result = react_agent.run(req.query, req.session_id)
+        
+        # If web search is requested, perform it
+        if req.web_search:
+            search_results = await mcp_server.web_search(req.query, req.session_id)
+            result["web_search_results"] = search_results
+            
+        # Enrich context with additional data
+        await mcp_server.enrich_context(req.session_id, {
+            "query": req.query,
+            "result": result
+        })
+        
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/feedback")
-def submit_feedback(req: FeedbackRequest):
+async def submit_feedback(req: FeedbackRequest):
     try:
         feedback = Feedback(
             query=req.query,
@@ -74,12 +93,18 @@ def submit_feedback(req: FeedbackRequest):
             }
         )
         feedback_manager.add_feedback(feedback)
+        
+        # Notify MCP server about feedback
+        await mcp_server.enrich_context(req.session_id, {
+            "feedback": feedback.dict()
+        })
+        
         return {"status": "success", "message": "Feedback recorded"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/feedback/stats")
-def get_feedback_stats():
+async def get_feedback_stats():
     try:
         stats = feedback_manager.get_feedback_stats()
         return stats

@@ -12,6 +12,7 @@ This platform helps sales teams identify, understand, and effectively engage wit
 - Learning from user feedback to improve results
 - Automating data updates and maintenance
 - Implementing Model Context Protocol (MCP) for enhanced context management
+- Real-time updates and web browsing capabilities through MCP Server
 
 ## System Architecture
 
@@ -44,6 +45,13 @@ graph TD
     R --> S["Session History"]
     S --> Q
 
+    T["MCP Server"] --> Q
+    Q --> T
+    T --> U["Web Browsing"]
+    T --> V["Real-time Updates"]
+    T --> W["Context Compression"]
+    T --> X["WebSocket Connections"]
+
 %% System components
 style A fill:#f9f,stroke:#333
 style B fill:#bbf,stroke:#333
@@ -54,6 +62,11 @@ style O fill:#bfb,stroke:#333
 style Q fill:#fbf,stroke:#333
 style R fill:#fbf,stroke:#333
 style S fill:#fbf,stroke:#333
+style T fill:#fbf,stroke:#333
+style U fill:#fbf,stroke:#333
+style V fill:#fbf,stroke:#333
+style W fill:#fbf,stroke:#333
+style X fill:#fbf,stroke:#333
 ```
 
 ## Key Components
@@ -93,7 +106,7 @@ style S fill:#fbf,stroke:#333
 - Manages CORS and error handling
 
 ### 7. Model Context Protocol (MCP)
-- **Core File:** `mcp_protocol.py`
+- **Core Files:** `mcp_protocol.py`, `mcp_server.py`
 - Implements context management for AI interactions
 - Features:
   - Session-based context tracking
@@ -101,12 +114,33 @@ style S fill:#fbf,stroke:#333
   - Context persistence and retrieval
   - Message history tracking
   - Metadata management
+  - Web browsing capabilities
+  - Real-time updates via WebSocket
+  - Context compression and optimization
 - Benefits:
   - Enhanced conversation continuity
   - Improved context awareness
   - Better response quality
   - Session state management
   - Debugging and monitoring capabilities
+  - Real-time data updates
+  - Web search integration
+  - Optimized context handling
+
+### 8. MCP Server
+- **Core File:** `mcp_server.py`
+- Provides enhanced capabilities for the MCP system
+- Features:
+  - WebSocket-based real-time updates
+  - Web browsing and search integration
+  - Context compression and optimization
+  - Session management
+  - Real-time data enrichment
+- Endpoints:
+  - WebSocket: `/ws/{session_id}`
+  - Context Enrichment: `/enrich/{session_id}`
+  - Context Retrieval: `/context/{session_id}`
+  - Context Compression: `/compress/{session_id}`
 
 ## Installation
 
@@ -135,12 +169,19 @@ cp .env.example .env
 
 ## Usage
 
-1. Start the API server:
+1. Start the main API server:
 ```bash
 uvicorn app:app --reload
 ```
 
-2. Access the API at `http://localhost:8000`
+2. Start the MCP Server:
+```bash
+uvicorn mcp_server:mcp_app --reload --port 8001
+```
+
+3. Access the APIs:
+- Main API: `http://localhost:8000`
+- MCP Server: `http://localhost:8001`
 
 ### API Endpoints
 
@@ -148,49 +189,63 @@ uvicorn app:app --reload
 - `POST /feedback`: Submit feedback on results
 - `GET /feedback/stats`: View feedback statistics
 
-### Example Queries
+### MCP Server Endpoints
 
-1. General Search:
+1. WebSocket Connection:
+```javascript
+const ws = new WebSocket('ws://localhost:8001/ws/{session_id}');
+ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    console.log('Received:', data);
+};
+```
+
+2. Context Enrichment:
+```bash
+curl -X POST http://localhost:8001/enrich/{session_id} \
+     -H "Content-Type: application/json" \
+     -d '{"additional_data": "value"}'
+```
+
+3. Context Retrieval:
+```bash
+curl http://localhost:8001/context/{session_id}
+```
+
+4. Context Compression:
+```bash
+curl -X POST http://localhost:8001/compress/{session_id}
+```
+
+### Example Queries with MCP Server
+
+1. Web Search Integration:
 ```json
 {
-    "query": "Find top roofing contractors in New Jersey with high customer ratings"
+    "query": "Find roofing contractors in New York",
+    "web_search": true
 }
 ```
 
-2. Business Need:
-```json
-{
-    "query": "Which contractors have not been contacted in the last month?"
-}
+2. Real-time Updates:
+```javascript
+// Connect to WebSocket
+const ws = new WebSocket('ws://localhost:8001/ws/{session_id}');
+
+// Send web search request
+ws.send(JSON.stringify({
+    "type": "web_search",
+    "query": "roofing contractors new york"
+}));
+
+// Receive real-time updates
+ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    if (data.type === "update") {
+        console.log("Real-time update:", data.data);
+    }
+};
 ```
-
-3. Experience-Based:
-```json
-{
-    "query": "Show me contractors in New York who have years of experiences"
-}
-```
-
-### MCP Protocol Usage
-
-The MCP protocol is automatically integrated into the chat system. To use it effectively:
-
-1. Initial Query:
-```json
-{
-    "query": "Find roofing contractors in New York"
-}
-```
-
-2. Follow-up Query (using session_id):
-```json
-{
-    "query": "Tell me more about the first contractor",
-    "session_id": "previous_session_id"
-}
-```
-
-The system will maintain context between queries, providing more coherent and contextually aware responses.
 
 ## Test Cases
 
@@ -204,6 +259,10 @@ The system will maintain context between queries, providing more coherent and co
 8. MCP Context Management
 9. Session Continuity
 10. Context Persistence
+11. Web Browsing Integration
+12. Real-time Updates
+13. Context Compression
+14. WebSocket Communication
 
 ## Future Improvements
 
@@ -227,4 +286,68 @@ The system will maintain context between queries, providing more coherent and co
    - Advanced context compression
    - Context-aware routing
    - Multi-session management
+
+5. **MCP Server Enhancements**
+   - Advanced web search capabilities
+   - Multi-source data integration
+   - Enhanced real-time analytics
+   - Advanced context compression algorithms
+   - WebSocket clustering for scalability
+
+## MCP Server Implementation
+
+### Core Components
+
+#### MCPServer Class
+- Manages WebSocket connections
+- Handles context management
+- Implements web search functionality
+- Provides real-time updates
+
+#### Web Search Implementation
+- Uses Google Custom Search API
+- Supports real-time result updates
+- Integrates search results into context
+- Provides error handling and notifications
+
+#### Context Management
+- Session-based context storage
+- Context compression for optimization
+- Real-time context updates
+- Context enrichment capabilities
+
+### WebSocket Features
+- Real-time bidirectional communication
+- Automatic context synchronization
+- Error handling and reconnection support
+- Session management
+
+### Security Features
+- Environment variable based configuration
+- API key management
+- Error handling and validation
+- Secure WebSocket connections
+
+## Development
+
+### Adding New Features
+1. Extend the MCPServer class
+2. Implement new WebSocket message handlers
+3. Update context management as needed
+4. Add new API endpoints if required
+
+### Testing
+```bash
+pytest tests/
+```
+
+## Contributing
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
+
+## License
+[Your License Here]
 
